@@ -430,10 +430,11 @@ def add_random_objects(scene_struct, num_objects, args, camera):
       'rotation': theta,
       'pixel_coords': pixel_coords,
       'color': color_name,
+      'class': get_class()
     })
 
   # Check that all objects are at least partially visible in the rendered image
-  all_visible = check_visibility(blender_objects, args.min_pixels_per_object)
+  all_visible = check_visibility(objects, blender_objects, args.min_pixels_per_object)
   if not all_visible:
     # If any of the objects are fully occluded then start over; delete all
     # objects from the scene and place them all again.
@@ -472,7 +473,7 @@ def compute_all_relationships(scene_struct, eps=0.2):
   return all_relationships
 
 
-def check_visibility(blender_objects, min_pixels_per_object):
+def check_visibility(objects, blender_objects, min_pixels_per_object):
   """
   Check whether all objects in the scene have some minimum number of visible
   pixels; to accomplish this we assign random (but distinct) colors to all
@@ -484,21 +485,23 @@ def check_visibility(blender_objects, min_pixels_per_object):
   Returns True if all objects are visible and False otherwise.
   """
   f, path = tempfile.mkstemp(suffix='.png')
-  object_colors = render_shadeless(blender_objects, path=path)
+  object_colors = render_shadeless(objects, blender_objects, path=path)
   img = bpy.data.images.load(path)
   p = list(img.pixels)
   color_count = Counter((p[i], p[i+1], p[i+2], p[i+3])
                         for i in range(0, len(p), 4))
-  os.remove(path)
+  
   if len(color_count) != len(blender_objects) + 1:
+    os.remove(path)
     return False
   for _, count in color_count.most_common():
     if count < min_pixels_per_object:
+      os.remove(path)
       return False
   return True
 
 
-def render_shadeless(blender_objects, path='flat.png'):
+def render_shadeless(objects, blender_objects, path='flat.png'):
   """
   Render a version of the scene with shading disabled and unique materials
   assigned to all objects, and return a set of all colors that should be in the
@@ -513,7 +516,7 @@ def render_shadeless(blender_objects, path='flat.png'):
   old_use_antialiasing = render_args.use_antialiasing
 
   # Override some render settings to have flat shading
-  render_args.filepath = path
+  render_args.filepath = render_args.filepath.replace('.png', '_s.png')
   render_args.engine = 'BLENDER_RENDER'
   render_args.use_antialiasing = False
 
@@ -526,15 +529,19 @@ def render_shadeless(blender_objects, path='flat.png'):
   # Add random shadeless materials to all objects
   object_colors = set()
   old_materials = []
-  for i, obj in enumerate(blender_objects):
+  for i, (o, obj) in enumerate(zip(objects, blender_objects)):
     old_materials.append(obj.data.materials[0])
     bpy.ops.material.new()
     mat = bpy.data.materials['Material']
     mat.name = 'Material_%d' % i
     while True:
-      r, g, b = [random.random() for _ in range(3)]
-      if (r, g, b) not in object_colors: break
-    object_colors.add((r, g, b))
+      r = random.random()
+      if r not in object_colors: break
+      # r, g, b = [random.random() for _ in range(2)]
+      # if (r, g, b) not in object_colors: break
+    object_colors.add(r)
+    g = 
+      
     mat.diffuse_color = [r, g, b]
     mat.use_shadeless = True
     obj.data.materials[0] = mat
